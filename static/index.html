@@ -2,25 +2,43 @@
 <html lang="en">
 
 <head>
-    <meta charset="UTF-8">
-    <link rel="stylesheet" href="style.css">
-    <script src="elm.js"></script>
-    <script src="wasm_exec.js"></script>
     <title>Minesweeper</title>
+    <meta charset="UTF-8">
+
+    <link rel="stylesheet" href="style.css">
+
+    <script src="wasm_exec.js"></script>
+    <script src="elm.js"></script>
+    <script>
+        const wasmLoadEvent = new Event("wasm-load");
+
+        const go = new Go();
+        WebAssembly.instantiateStreaming(fetch("main.wasm"), go.importObject).then((result) => {
+            go.run(result.instance);
+
+            dispatchEvent(wasmLoadEvent);
+        });
+    </script>
 </head>
 
 <body>
     <div id="elm-app-is-loaded-here"></div>
+
     <script>
-        const go = new Go();
-        WebAssembly.instantiateStreaming(fetch("main.wasm"), go.importObject).then((result) => {
-            go.run(result.instance);
+        // Only after wasm loaded then can call its func so needs to wait for that.
+        addEventListener("wasm-load", () => {
+            var app = Elm.Main.init({
+                node: document.getElementById("elm-app-is-loaded-here")
+            });
+
+            app.ports.newGrid.subscribe(function (dim) {
+                // console.log(dim);
+                const grid = newGrid(dim[0], dim[1]);
+                console.log(grid);
+
+                app.ports.gridReceiver.send(grid);
+            });
         });
-    </script>
-    <script>
-        var app = Elm.Main.init({
-            node: document.getElementById("elm-app-is-loaded-here")
-        });      
     </script>
 </body>
 
