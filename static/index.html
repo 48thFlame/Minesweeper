@@ -31,12 +31,16 @@
                 node: document.getElementById("elm-app-is-loaded-here")
             });
 
-            app.ports.newGrid.subscribe(function (dim) {
-                // console.log(dim);
-                const grid = newGrid(dim[0], dim[1]);
-                console.log(grid);
+            app.ports.newGame.subscribe(function (dim_obj) {
+                const { rowsNum, colsNum } = dim_obj;
 
-                app.ports.gridReceiver.send(grid);
+                console.log("cols:", colsNum, "rows:", rowsNum);
+
+                const mines = newMines(rowsNum, colsNum);
+                app.ports.minesGetter.send(mines);
+
+                const grid = newGrid(rowsNum, colsNum);
+                app.ports.gridGetter.send(grid);
             });
         });
     </script>
