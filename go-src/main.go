@@ -9,7 +9,7 @@ import (
 func main() {
 	done := make(chan struct{})
 
-	js.Global().Set("newGrid", js.FuncOf(newGrid))
+	js.Global().Set("getGrid", js.FuncOf(getGrid))
 	js.Global().Set("newMines", js.FuncOf(newMines))
 
 	<-done
@@ -30,24 +30,56 @@ func doNotPanicPlease() {
 // 11 = Flag cell.
 type Cell = int
 
-// `newGrid(rows_num, cols_num)` expects 2 args: rows_num and cols_num, both need to be ints.
+const (
+	mineCell   Cell = 9
+	closedCell      = 10
+	flagCell        = 11
+)
+
+// convertToSlice(arr) takes a js array and returns a []int, may panic if bad array.
+func convertToSlice(arr js.Value) []int {
+	arrLen := arr.Length()
+	s := make([]int, 0, arrLen)
+
+	for i := 0; i < arrLen; i++ {
+		n := arr.Index(i).Int()
+		s = append(s, n)
+	}
+
+	return s
+}
+
+// `getGrid(rowsNum uint, colsNum uint, mines []int, flagged []int, opened []int)`
 // Can't return a nested array threw WASM (couldn't figure this one out)
 // so returns a 1-D array
-func newGrid(this js.Value, args []js.Value) any {
+func getGrid(this js.Value, args []js.Value) any {
 	defer doNotPanicPlease()
 
-	rows_num := args[0].Int()
-	cols_num := args[1].Int()
+	rowsNum := args[0].Int()
+	colsNum := args[1].Int()
+	mines := convertToSlice(args[2])
+	flagged := convertToSlice(args[3])
+	opened := convertToSlice(args[4])
 
-	grid := make([]any, 0, rows_num*cols_num)
+	gridArea := rowsNum * colsNum
 
-	for rowI := 0; rowI < rows_num; rowI++ {
-		for colI := 0; colI < cols_num; colI++ {
-			cell := rand.Intn(12)
+	grid := make([]any, 0, gridArea)
 
-			grid = append(grid, cell)
+	for i := 0; i < gridArea; i++ {
+		grid = append(grid, closedCell)
+	}
 
-		}
+	for _, mineI := range mines {
+		grid[mineI] = mineCell
+	}
+
+	for _, flagI := range flagged {
+		grid[flagI] = flagCell
+	}
+
+	for _, openI := range opened {
+		// TODO: put the number of mines not 0!
+		grid[openI] = 0
 	}
 
 	return grid

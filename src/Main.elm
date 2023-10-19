@@ -3,9 +3,12 @@ port module Main exposing (main)
 import Browser
 import Html exposing (Html, div, img, text)
 import Html.Attributes exposing (class, src, style)
+import Html.Events exposing (on, onClick)
+import Json.Decode as Decode exposing (Decoder)
+import Set exposing (Set)
 
 
-main : Program () Model Msg
+main : Program ( Int, Int ) Model Msg
 main =
     Browser.element
         { init = init
@@ -36,6 +39,7 @@ port updateGrid :
     { rowsNum : Int
     , colsNum : Int
     , mines : List Int
+    , flagged : List Int
     , opened : List Int
     }
     -> Cmd msg
@@ -45,8 +49,9 @@ type alias Model =
     { grid : List Cell
     , rowsNum : Int
     , colsNum : Int
-    , mines : List Int
-    , opened : List Int
+    , mines : Set Int
+    , flagged : Set Int
+    , opened : Set Int
     }
 
 
@@ -59,20 +64,21 @@ type Cell
     | Mine
 
 
-init : flags -> ( Model, Cmd Msg )
-init _ =
+init : ( Int, Int ) -> ( Model, Cmd Msg )
+init flags =
     let
         rowsNum =
-            6
+            Tuple.first flags
 
         colsNum =
-            7
+            Tuple.second flags
     in
     ( { grid = []
       , rowsNum = rowsNum
       , colsNum = colsNum
-      , mines = []
-      , opened = []
+      , mines = Set.empty
+      , flagged = Set.empty
+      , opened = Set.empty
       }
     , newGame { rowsNum = rowsNum, colsNum = colsNum }
     )
@@ -82,6 +88,7 @@ type Msg
     = NewGrid (List Int)
     | NewMines (List Int)
     | OpenCell Int
+    | FlagCell Int
 
 
 decodeIncomingGrid : List Int -> List Cell
@@ -105,6 +112,17 @@ decodeIncomingGrid incGrid =
     List.map intToCell incGrid
 
 
+updateGridFromModel : Model -> Cmd Msg
+updateGridFromModel model =
+    updateGrid
+        { rowsNum = model.rowsNum
+        , colsNum = model.colsNum
+        , mines = model.mines |> Set.toList
+        , flagged = model.flagged |> Set.toList
+        , opened = model.opened |> Set.toList
+        }
+
+
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
@@ -112,10 +130,35 @@ update msg model =
             ( { model | grid = decodeIncomingGrid grid }, Cmd.none )
 
         NewMines mines ->
-            ( { model | mines = mines |> Debug.log "mines" }, Cmd.none )
+            let
+                newModel =
+                    { model
+                        | mines = Set.fromList mines
+                    }
+            in
+            ( newModel, updateGridFromModel newModel )
 
-        OpenCell _ ->
-            ( model, Cmd.none )
+        OpenCell i ->
+            let
+                newModel =
+                    { model
+                        | opened = Set.insert i model.opened
+                    }
+            in
+            ( newModel
+            , updateGridFromModel newModel
+            )
+
+        FlagCell i ->
+            let
+                newModel =
+                    { model
+                        | flagged = Set.insert i model.flagged
+                    }
+            in
+            ( newModel
+            , updateGridFromModel newModel
+            )
 
 
 subscriptions : Model -> Sub Msg
@@ -162,6 +205,25 @@ cellToHtml cell =
 -}
 
 
+msgFromId : Int -> Int -> Msg
+msgFromId cellI id =
+    -- 0 -> MainButton
+    -- 1 -> MiddleButton
+    -- 2 -> SecondButton
+    -- 3 -> BackButton
+    -- 4 -> ForwardButton
+    case id of
+        0 ->
+            OpenCell cellI
+
+        2 ->
+            FlagCell cellI
+
+        _ ->
+            -- if its any mouse button then just open the cell
+            OpenCell cellI
+
+
 gridToHtml : Model -> Html Msg
 gridToHtml model =
     let
@@ -176,11 +238,19 @@ gridToHtml model =
         getColNumStr i =
             modBy colsNum i + 1 |> String.fromInt
 
+        clickMsgDecoder : Int -> Decoder Msg
+        clickMsgDecoder i =
+            Decode.map
+                (msgFromId i)
+                (Decode.field "button" Decode.int)
+
         gridCell i cell =
             div
                 [ class "cell"
                 , style "grid-row-start" (getRowNumStr i)
                 , style "grid-column-start" (getColNumStr i)
+                , onClick (OpenCell i)
+                , on "mousedown" (clickMsgDecoder i)
                 ]
                 [ cellToHtml cell ]
 
