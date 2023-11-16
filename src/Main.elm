@@ -30,7 +30,7 @@ port minesGetter : (List Int -> msg) -> Sub msg
 
 {-| `newGame` is an outgoing port to get a random list of mine locations.
 -}
-port newGame : { rowsNum : Int, colsNum : Int } -> Cmd msg
+port newGame : { rowsNum : Int, colsNum : Int, opened : Int } -> Cmd msg
 
 
 {-| `updateGrid` is an outgoing port to update the grid because new cell was opened.
@@ -73,14 +73,15 @@ init flags =
         colsNum =
             Tuple.second flags
     in
-    ( { grid = []
+    ( { grid = List.repeat (rowsNum * colsNum) Closed
       , rowsNum = rowsNum
       , colsNum = colsNum
       , mines = Set.empty
       , flagged = Set.empty
       , opened = Set.empty
       }
-    , newGame { rowsNum = rowsNum, colsNum = colsNum }
+      -- , newGame { rowsNum = rowsNum, colsNum = colsNum, opened = 0 }
+    , Cmd.none
     )
 
 
@@ -139,21 +140,40 @@ update msg model =
             ( newModel, updateGridFromModel newModel )
 
         OpenCell i ->
-            let
-                newModel =
-                    { model
-                        | opened = Set.insert i model.opened
-                    }
-            in
-            ( newModel
-            , updateGridFromModel newModel
-            )
+            if not <| Set.isEmpty model.mines then
+                -- only if started the game
+                let
+                    newOpened =
+                        if Set.member i model.flagged then
+                            model.opened
+
+                        else
+                            Set.insert i model.opened
+
+                    newModel =
+                        { model
+                            | opened = newOpened
+                        }
+                in
+                ( newModel
+                , updateGridFromModel newModel
+                )
+
+            else
+                ( model, newGame { rowsNum = model.rowsNum, colsNum = model.colsNum, opened = i } )
 
         FlagCell i ->
             let
+                newFlagged =
+                    if Set.member i model.flagged then
+                        Set.remove i model.flagged
+
+                    else
+                        Set.insert i model.flagged
+
                 newModel =
                     { model
-                        | flagged = Set.insert i model.flagged
+                        | flagged = newFlagged
                     }
             in
             ( newModel
@@ -206,13 +226,13 @@ cellToHtml cell =
 
 
 msgFromId : Int -> Int -> Msg
-msgFromId cellI id =
+msgFromId cellI mouseBtnId =
     -- 0 -> MainButton
     -- 1 -> MiddleButton
     -- 2 -> SecondButton
     -- 3 -> BackButton
     -- 4 -> ForwardButton
-    case id of
+    case mouseBtnId of
         0 ->
             OpenCell cellI
 

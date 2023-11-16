@@ -37,9 +37,9 @@
             });
 
             app.ports.newGame.subscribe(function (dim_obj) {
-                const { rowsNum, colsNum } = dim_obj;
+                const { rowsNum, colsNum, opened } = dim_obj;
 
-                const mines = newMines(rowsNum, colsNum);
+                const mines = newMines(rowsNum, colsNum, opened);
                 app.ports.minesGetter.send(mines);
             });
 
