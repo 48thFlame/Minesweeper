@@ -53,22 +53,34 @@ func getGrid(rowsNum, colsNum int, mines, flagged, opened []int) any {
 		grid = append(grid, closedCell)
 	}
 
-	for _, mineI := range mines {
-		grid[mineI] = mineCell
+	// for _, mineI := range mines {
+	// 	grid[mineI] = mineCell
+	// }
+	expandedOpened := []int{}
+
+	for _, openI := range opened {
+		expandedOpened = expandOpened(rowsNum, colsNum, openI, mines, []int{})
+		fmt.Printf("expandedOpened: %v\n", expandedOpened)
 	}
 
-	for _, flagI := range flagged {
-		grid[flagI] = flagCell
-	}
+	opened = append(opened, expandedOpened...)
 
 	for _, openI := range opened {
 		if contains(mines, openI) {
+			grid[openI] = mineCell
 			fmt.Println("Yup you just lost...")
 			continue
 		}
 
 		numOfMines := countMines(mines, rowsNum, colsNum, openI)
 		grid[openI] = numOfMines
+		// if numOfMines == 0 {
+
+		// }
+	}
+
+	for _, flagI := range flagged {
+		grid[flagI] = flagCell
 	}
 
 	return grid
@@ -92,6 +104,30 @@ func countMines(mines []int, rowsNum, colsNum, i int) (amount int) {
 	return
 }
 
+func expandOpened(rowsNum, colsNum, i int, mines, opened []int) []int {
+	row := i / colsNum
+	col := i % colsNum
+
+	// If out of bounds or already opened return
+	if row < 0 || col < 0 || row >= rowsNum || col >= colsNum || contains(opened, i) {
+		return opened
+	}
+
+	// Open cell
+	opened = append(opened, i)
+
+	minesNum := countMines(mines, rowsNum, colsNum, i)
+	// Check and recursively open neighboring cells
+	if minesNum == 0 { // Only if it's a 0 cell should open (or if flags allow TODO)
+		indexChangesForNeighbors := getIndexChanges(i, rowsNum, colsNum)
+		for _, j := range indexChangesForNeighbors {
+			opened = append(opened, expandOpened(rowsNum, colsNum, i+j, mines, opened)...)
+		}
+	}
+
+	return opened
+}
+
 // newMines(rowsNum, colsNum, opened) expects to be ints.
 // Returns an array of 1-D array indexes that should be mines, and the opened is used to not allow to lose on first turn (that i cant be mine).
 func newMines(rowsNum, colsNum, opened int) []any {
@@ -111,3 +147,27 @@ func newMines(rowsNum, colsNum, opened int) []any {
 
 	return mines
 }
+
+// func isLost(mines, opened []int) bool {
+// 	for _, openI := range opened {
+// 		if contains(mines, openI) {
+// 			return true
+// 		}
+// 	}
+
+// 	return false
+// }
+
+// // resolveFlaggedOpenedConflicts returns the flagged cells `i` that is not opened (flagged \ opened)
+// func resolveFlaggedOpenedConflicts(flagged, opened []int) []int {
+// 	newFlagged := make([]int, 0)
+
+// 	for _, flaggedI := range flagged {
+// 		if !contains(opened, flaggedI) {
+// 			// if the flaggedI is not opened its actually flagged, so keep it
+// 			newFlagged = append(newFlagged, flaggedI)
+// 		}
+// 	}
+
+// 	return newFlagged
+// }

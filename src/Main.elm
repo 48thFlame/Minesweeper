@@ -140,7 +140,7 @@ update msg model =
             ( newModel, updateGridFromModel newModel )
 
         OpenCell i ->
-            if not <| Set.isEmpty model.mines then
+            if not (Set.isEmpty model.mines) then
                 -- only if started the game
                 let
                     newOpened =
@@ -168,8 +168,11 @@ update msg model =
                     if Set.member i model.flagged then
                         Set.remove i model.flagged
 
-                    else
+                    else if not (Set.member i model.opened) then
                         Set.insert i model.flagged
+
+                    else
+                        model.flagged
 
                 newModel =
                     { model

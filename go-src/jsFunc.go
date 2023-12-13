@@ -32,3 +32,17 @@ func newMinesJsFunc(this js.Value, args []js.Value) any {
 
 	return newMines(rowsNum, colsNum, opened)
 }
+
+// func cleanStateJsFunc(this js.Value, args []js.Value) any {
+// 	defer doNotPanicPlease()
+
+// 	rowsNum := args[0].Int()
+// 	colsNum := args[1].Int()
+// 	mines := convertToSlice(args[2])
+// 	flagged := convertToSlice(args[3])
+// 	opened := convertToSlice(args[4])
+
+// 	flagged = resolveFlaggedOpenedConflicts(flagged, opened)
+
+// 	return [...]any{}
+// }
