@@ -1,10 +1,6 @@
-
 .vscode
 
 elm-stuff
 elm.js
 
 archive
-
-main.wasm
-wasm_exec.js

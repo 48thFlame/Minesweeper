@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <title>Minesweeper</title>
+    <meta charset="UTF-8">
+
+    <script src="elm.js"></script>
+    <script>
+        // Need to disable context so can right-click to flag without being annoying.
+        addEventListener('contextmenu', event => event.preventDefault());
+    </script>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div id="elm-app-is-loaded-here"></div>
+    <script>
+        var app = Elm.Main.init({
+            node: document.getElementById("elm-app-is-loaded-here"),
+            flags: [10, 10]
+        });
+    </script>
+</body>
+
+</html>

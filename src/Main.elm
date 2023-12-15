@@ -1,10 +1,33 @@
-port module Main exposing (main)
+{-
+   i = cols_num * (row ) + col
+
+   -col = cols_num * row - i
+   col = - (cols_num * row - i)
+   col = -cols_num * row + i
+
+   col = mod(i, cols_num)
+
+   cols_num * row = i - col
+   row = (i - col) / cols_num
+
+   row = floor(i / cols_num)
+
+   ~~~~~~~~~
+
+   -cn-1 -cn -cn+1
+   -1 0 1
+   cn-1 cn cn+1
+-}
+
+
+module Main exposing (main)
 
 import Browser
 import Html exposing (Html, div, img, text)
 import Html.Attributes exposing (class, src, style)
-import Html.Events exposing (on, onClick)
+import Html.Events exposing (on)
 import Json.Decode as Decode exposing (Decoder)
+import Random
 import Set exposing (Set)
 
 
@@ -18,36 +41,8 @@ main =
         }
 
 
-{-| `gridGetter` is an incoming port to get updated grid to display, for example after sends `updateGrid` because new cell was opened.
--}
-port gridGetter : (List Int -> msg) -> Sub msg
-
-
-{-| `minesGetter` is an incoming port to get new mines after starting a new game.
--}
-port minesGetter : (List Int -> msg) -> Sub msg
-
-
-{-| `newGame` is an outgoing port to get a random list of mine locations.
--}
-port newGame : { rowsNum : Int, colsNum : Int, opened : Int } -> Cmd msg
-
-
-{-| `updateGrid` is an outgoing port to update the grid because new cell was opened.
--}
-port updateGrid :
-    { rowsNum : Int
-    , colsNum : Int
-    , mines : List Int
-    , flagged : List Int
-    , opened : List Int
-    }
-    -> Cmd msg
-
-
 type alias Model =
-    { grid : List Cell
-    , rowsNum : Int
+    { rowsNum : Int
     , colsNum : Int
     , mines : Set Int
     , flagged : Set Int
@@ -55,138 +50,96 @@ type alias Model =
     }
 
 
-{-| `Cell` is a cell of the grid top to display
--}
-type Cell
-    = Closed
-    | Number Int
-    | Flag
-    | Mine
+percentMines : Float
+percentMines =
+    0.18
 
 
 init : ( Int, Int ) -> ( Model, Cmd Msg )
 init flags =
     let
+        rowsNum : Int
         rowsNum =
             Tuple.first flags
 
+        colsNum : Int
         colsNum =
             Tuple.second flags
+
+        gridSize : Int
+        gridSize =
+            rowsNum * colsNum
+
+        {- |
+           // number of mines that should be, adds one because if user clicks a mine spot should remove that mine otherwise just remove a mine
+           TODO: duplicates problem, losing on first turn problem.
+        -}
+        numberOfMines : Int
+        numberOfMines =
+            floor (percentMines * toFloat gridSize)
     in
-    ( { grid = List.repeat (rowsNum * colsNum) Closed
-      , rowsNum = rowsNum
+    ( { rowsNum = rowsNum
       , colsNum = colsNum
       , mines = Set.empty
       , flagged = Set.empty
       , opened = Set.empty
       }
-      -- , newGame { rowsNum = rowsNum, colsNum = colsNum, opened = 0 }
-    , Cmd.none
+    , Random.list numberOfMines (Random.int 0 gridSize)
+        |> Random.generate NewMines
     )
 
 
 type Msg
-    = NewGrid (List Int)
-    | NewMines (List Int)
+    = NewMines (List Int)
     | OpenCell Int
     | FlagCell Int
-
-
-decodeIncomingGrid : List Int -> List Cell
-decodeIncomingGrid incGrid =
-    let
-        intToCell : Int -> Cell
-        intToCell i =
-            case i of
-                9 ->
-                    Mine
-
-                10 ->
-                    Closed
-
-                11 ->
-                    Flag
-
-                num ->
-                    Number num
-    in
-    List.map intToCell incGrid
-
-
-updateGridFromModel : Model -> Cmd Msg
-updateGridFromModel model =
-    updateGrid
-        { rowsNum = model.rowsNum
-        , colsNum = model.colsNum
-        , mines = model.mines |> Set.toList
-        , flagged = model.flagged |> Set.toList
-        , opened = model.opened |> Set.toList
-        }
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        NewGrid grid ->
-            ( { model | grid = decodeIncomingGrid grid }, Cmd.none )
-
         NewMines mines ->
-            let
-                newModel =
-                    { model
-                        | mines = Set.fromList mines
-                    }
-            in
-            ( newModel, updateGridFromModel newModel )
+            ( { model | mines = Set.fromList mines }, Cmd.none )
 
         OpenCell i ->
-            if not <| Set.isEmpty model.mines then
-                -- only if started the game
-                let
-                    newOpened =
-                        if Set.member i model.flagged then
-                            model.opened
+            ( { model
+                | opened =
+                    if Set.member i model.flagged then
+                        -- If cell is flagged, can't open it
+                        model.opened
 
-                        else
-                            Set.insert i model.opened
-
-                    newModel =
-                        { model
-                            | opened = newOpened
-                        }
-                in
-                ( newModel
-                , updateGridFromModel newModel
-                )
-
-            else
-                ( model, newGame { rowsNum = model.rowsNum, colsNum = model.colsNum, opened = i } )
+                    else
+                        Set.insert i model.opened
+              }
+            , Cmd.none
+            )
 
         FlagCell i ->
-            let
-                newFlagged =
+            ( { model
+                | flagged =
                     if Set.member i model.flagged then
                         Set.remove i model.flagged
 
-                    else
+                    else if not (Set.member i model.opened) then
                         Set.insert i model.flagged
 
-                newModel =
-                    { model
-                        | flagged = newFlagged
-                    }
-            in
-            ( newModel
-            , updateGridFromModel newModel
+                    else
+                        model.flagged
+              }
+            , Cmd.none
             )
 
 
 subscriptions : Model -> Sub Msg
 subscriptions _ =
-    Sub.batch
-        [ gridGetter NewGrid
-        , minesGetter NewMines
-        ]
+    Sub.none
+
+
+type Cell
+    = Closed
+    | Number Int
+    | Flag
+    | Mine
 
 
 cellToHtml : Cell -> Html Msg
@@ -208,25 +161,110 @@ cellToHtml cell =
                 [ img [ src "assets/mine.svg", class "cell-img" ] [] ]
 
 
+getIndexesAround : Int -> Int -> Int -> List Int
+getIndexesAround rowsNum colsNum i =
+    let
+        row =
+            i // rowsNum
 
-{-
-   i = cols_num * (row ) + col
+        col =
+            modBy colsNum i
 
-   -col = cols_num * row - i
-   col = - (cols_num * row - i)
-   col = -cols_num * row + i
+        upLeft =
+            i - colsNum - 1
 
-   col = mod(i, cols_num)
+        directUp =
+            i - colsNum
 
-   cols_num * row = i - col
-   row = (i - col) / cols_num
+        upRight =
+            i - colsNum + 1
 
-   row = floor(i / cols_num)
--}
+        directLeft =
+            i - 1
+
+        directRight =
+            i + 1
+
+        downLeft =
+            i + colsNum - 1
+
+        directDown =
+            i + colsNum
+
+        downRight =
+            i + colsNum + 1
+    in
+    if row == 0 then
+        if col == 0 then
+            [ directRight, directDown, downRight ]
+
+        else if col == colsNum - 1 then
+            [ directLeft, directDown, downLeft ]
+
+        else
+            [ directDown, directLeft, directRight, downRight, downRight ]
+
+    else if row == rowsNum - 1 then
+        if col == 0 then
+            [ directUp, upRight, directRight ]
+
+        else if col == colsNum - 1 then
+            [ directUp, upLeft, directLeft ]
+
+        else
+            [ directLeft, upLeft, directUp, upRight, directRight ]
+
+    else if col == 0 then
+        [ directUp, upRight, directRight, downRight, directDown ]
+
+    else if col == colsNum - 1 then
+        [ directUp, upLeft, directLeft, downLeft, directDown ]
+
+    else
+        [ directUp, upRight, directRight, downRight, directDown, downLeft, directLeft, upLeft ]
 
 
-msgFromId : Int -> Int -> Msg
-msgFromId cellI mouseBtnId =
+countMines : Int -> Int -> Set Int -> Int -> Int
+countMines rowsNum colsNum mines i =
+    getIndexesAround rowsNum colsNum i
+        |> Set.fromList
+        |> Set.intersect mines
+        |> Set.size
+
+
+getGrid : Int -> Int -> Set Int -> Set Int -> Set Int -> List Cell
+getGrid rowsNum colsNum opened flagged mines =
+    -- let
+    --     replaceItemIfInSet set newItem i currentItem =
+    --         if Set.member i set then
+    --             newItem
+    --         else
+    --             currentItem
+    -- in
+    -- List.repeat (rowsNum * colsNum) Closed
+    --     |> List.indexedMap (replaceItemIfInSet flagged Flag)
+    let
+        getCellAtIndex : Int -> Cell
+        getCellAtIndex i =
+            if Set.member i flagged then
+                Flag
+
+            else if Set.member i opened then
+                if Set.member i mines then
+                    Mine
+
+                else
+                    Number (countMines rowsNum colsNum mines i)
+
+            else
+                Closed
+    in
+    List.range 0 (rowsNum * colsNum - 1)
+        |> List.map getCellAtIndex
+
+
+mouseMsgFromEventId : Int -> Int -> Msg
+mouseMsgFromEventId cellI mouseBtnId =
     -- 0 -> MainButton
     -- 1 -> MiddleButton
     -- 2 -> SecondButton
@@ -240,45 +278,42 @@ msgFromId cellI mouseBtnId =
             FlagCell cellI
 
         _ ->
-            -- if its any mouse button then just open the cell
+            -- if its any mouse button by default just open the cell
             OpenCell cellI
 
 
-gridToHtml : Model -> Html Msg
-gridToHtml model =
+gridToHtml : Int -> Int -> List Cell -> Html Msg
+gridToHtml rowsNum colsNum grid =
     let
-        colsNum =
-            model.colsNum
-
-        getRowNumStr : Int -> String
-        getRowNumStr i =
+        getCellRowStr : Int -> String
+        getCellRowStr i =
             (i // colsNum) + 1 |> String.fromInt
 
-        getColNumStr : Int -> String
-        getColNumStr i =
+        getCellColStr : Int -> String
+        getCellColStr i =
             modBy colsNum i + 1 |> String.fromInt
 
-        clickMsgDecoder : Int -> Decoder Msg
-        clickMsgDecoder i =
+        clickMsgEventDecoder : Int -> Decoder Msg
+        clickMsgEventDecoder i =
             Decode.map
-                (msgFromId i)
+                (mouseMsgFromEventId i)
                 (Decode.field "button" Decode.int)
 
-        gridCell i cell =
+        cellInGridToHtml : Int -> Cell -> Html Msg
+        cellInGridToHtml i cell =
             div
                 [ class "cell"
-                , style "grid-row-start" (getRowNumStr i)
-                , style "grid-column-start" (getColNumStr i)
-                , onClick (OpenCell i)
-                , on "mousedown" (clickMsgDecoder i)
+                , style "grid-row-start" (getCellRowStr i)
+                , style "grid-column-start" (getCellColStr i)
+                , on "mousedown" (clickMsgEventDecoder i)
                 ]
                 [ cellToHtml cell ]
 
         colsNumStr =
-            model.colsNum |> String.fromInt
+            String.fromInt colsNum
 
         rowsNumStr =
-            model.rowsNum |> String.fromInt
+            String.fromInt rowsNum
     in
     div
         [ class "grid_area"
@@ -286,12 +321,14 @@ gridToHtml model =
         , style "grid-template-rows" ("repeat(" ++ rowsNumStr ++ ", 1fr)")
         , style "grid-template-columns" ("repeat(" ++ colsNumStr ++ ", 1fr)")
         ]
-        (List.indexedMap gridCell model.grid)
+        (List.indexedMap cellInGridToHtml grid)
 
 
 view : Model -> Html Msg
 view model =
     div [ class "main" ]
         [ gridToHtml
-            model
+            model.rowsNum
+            model.colsNum
+            (getGrid model.rowsNum model.colsNum model.opened model.flagged model.mines)
         ]
