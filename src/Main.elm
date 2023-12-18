@@ -95,6 +95,25 @@ type Msg
     | FlagCell Int
 
 
+expandOpened : Int -> Int -> Set Int -> Set Int -> Int -> Set Int -> Set Int
+expandOpened rowsNum colsNum mines flagged i opened =
+    let
+        numberOfMines =
+            countMines rowsNum colsNum mines i
+
+        newOpened =
+            Set.insert i opened
+
+        indexes =
+            getIndexesAround rowsNum colsNum i
+    in
+    if Set.member i opened || numberOfMines /= 0 then
+        newOpened
+
+    else
+        List.foldl (expandOpened rowsNum colsNum mines flagged) newOpened indexes
+
+
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
@@ -102,14 +121,18 @@ update msg model =
             ( { model | mines = Set.fromList mines }, Cmd.none )
 
         OpenCell i ->
-            ( { model
-                | opened =
+            let
+                newOpened =
                     if Set.member i model.flagged then
                         -- If cell is flagged, can't open it
                         model.opened
 
                     else
-                        Set.insert i model.opened
+                        expandOpened model.rowsNum model.colsNum model.mines model.flagged i model.opened
+            in
+            ( { model
+                | opened =
+                    newOpened
               }
             , Cmd.none
             )
@@ -202,7 +225,7 @@ getIndexesAround rowsNum colsNum i =
             [ directLeft, directDown, downLeft ]
 
         else
-            [ directDown, directLeft, directRight, downRight, downRight ]
+            [ directLeft, downLeft, directDown, downRight, directRight ]
 
     else if row == rowsNum - 1 then
         if col == 0 then
