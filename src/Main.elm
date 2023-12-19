@@ -28,6 +28,7 @@ import Html.Attributes exposing (class, src, style)
 import Html.Events exposing (on)
 import Json.Decode as Decode exposing (Decoder)
 import Random
+import Random.Set
 import Set exposing (Set)
 
 
@@ -45,6 +46,7 @@ type alias Model =
     { rowsNum : Int
     , colsNum : Int
     , mines : Set Int
+    , totalMines : Int
     , flagged : Set Int
     , opened : Set Int
     }
@@ -52,7 +54,7 @@ type alias Model =
 
 percentMines : Float
 percentMines =
-    0.18
+    0.15625
 
 
 init : ( Int, Int ) -> ( Model, Cmd Msg )
@@ -65,32 +67,20 @@ init flags =
         colsNum : Int
         colsNum =
             Tuple.second flags
-
-        gridSize : Int
-        gridSize =
-            rowsNum * colsNum
-
-        {- |
-           // number of mines that should be, adds one because if user clicks a mine spot should remove that mine otherwise just remove a mine
-           TODO: duplicates problem, losing on first turn problem.
-        -}
-        numberOfMines : Int
-        numberOfMines =
-            floor (percentMines * toFloat gridSize)
     in
     ( { rowsNum = rowsNum
       , colsNum = colsNum
       , mines = Set.empty
+      , totalMines = 0
       , flagged = Set.empty
       , opened = Set.empty
       }
-    , Random.list numberOfMines (Random.int 0 gridSize)
-        |> Random.generate NewMines
+    , Cmd.none
     )
 
 
 type Msg
-    = NewMines (List Int)
+    = StartGame Int (Set Int)
     | OpenCell Int
     | FlagCell Int
 
@@ -107,35 +97,74 @@ expandOpened rowsNum colsNum mines flagged i opened =
         indexes =
             getIndexesAround rowsNum colsNum i
     in
-    if Set.member i opened || numberOfMines /= 0 then
+    if Set.member i flagged then
+        -- If the cell is flagged don't open it
+        opened
+
+    else if Set.member i opened || numberOfMines /= 0 then
         newOpened
 
     else
         List.foldl (expandOpened rowsNum colsNum mines flagged) newOpened indexes
 
 
+expandOpenedFromModel : Int -> Model -> Model
+expandOpenedFromModel i model =
+    { model
+        | opened =
+            expandOpened
+                model.rowsNum
+                model.colsNum
+                model.mines
+                model.flagged
+                i
+                model.opened
+    }
+
+
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        NewMines mines ->
-            ( { model | mines = Set.fromList mines }, Cmd.none )
+        StartGame i mines ->
+            let
+                newMines =
+                    -- remove cause need to not lost on first turn
+                    Set.remove i mines
+            in
+            ( { model
+                | mines = newMines
+                , totalMines = Set.size newMines
+              }
+                |> expandOpenedFromModel i
+            , Cmd.none
+            )
 
         OpenCell i ->
             let
-                newOpened =
-                    if Set.member i model.flagged then
-                        -- If cell is flagged, can't open it
-                        model.opened
+                gridSize : Int
+                gridSize =
+                    model.rowsNum * model.colsNum
 
-                    else
-                        expandOpened model.rowsNum model.colsNum model.mines model.flagged i model.opened
+                numberOfMines : Int
+                numberOfMines =
+                    round (percentMines * toFloat gridSize)
             in
-            ( { model
-                | opened =
-                    newOpened
-              }
-            , Cmd.none
-            )
+            if not (Set.isEmpty model.mines) then
+                -- If game started because mines exist
+                ( if Set.member i model.flagged then
+                    -- If cell is flagged, can't open it
+                    model
+
+                  else
+                    expandOpenedFromModel i model
+                , Cmd.none
+                )
+
+            else
+                ( model
+                , Random.Set.set numberOfMines (Random.int 0 gridSize)
+                    |> Random.generate (StartGame i)
+                )
 
         FlagCell i ->
             ( { model
@@ -350,8 +379,18 @@ gridToHtml rowsNum colsNum grid =
 view : Model -> Html Msg
 view model =
     div [ class "main" ]
-        [ gridToHtml
+        [ Html.h1 [ class "title" ] [ text "Minesweeper!" ]
+        , gridToHtml
             model.rowsNum
             model.colsNum
             (getGrid model.rowsNum model.colsNum model.opened model.flagged model.mines)
+        , Html.p
+            [ class "mine-count" ]
+            [ text
+                ("Mines left: "
+                    ++ String.fromInt (Set.size model.flagged)
+                    ++ "/"
+                    ++ String.fromInt model.totalMines
+                )
+            ]
         ]
