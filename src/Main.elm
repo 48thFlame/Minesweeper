@@ -83,14 +83,16 @@ type Msg
     = StartGame Int (Set Int)
     | OpenCell Int
     | FlagCell Int
+    | ExpandCell Int
 
 
-expandOpened : Int -> Int -> Set Int -> Set Int -> Int -> Set Int -> Set Int
-expandOpened rowsNum colsNum mines flagged i opened =
+expandOpenedFromClosed : Int -> Int -> Set Int -> Set Int -> Int -> Set Int -> Set Int
+expandOpenedFromClosed rowsNum colsNum mines flagged i opened =
     let
         numberOfMines =
             countMines rowsNum colsNum mines i
 
+        -- countUnFlaggedMines rowsNum colsNum mines flagged i
         newOpened =
             Set.insert i opened
 
@@ -105,14 +107,31 @@ expandOpened rowsNum colsNum mines flagged i opened =
         newOpened
 
     else
-        List.foldl (expandOpened rowsNum colsNum mines flagged) newOpened indexes
+        List.foldl (expandOpenedFromClosed rowsNum colsNum mines flagged) newOpened indexes
+
+
+expandCell : Int -> Int -> Set Int -> Set Int -> Set Int -> Int -> List Int
+expandCell rowsNum colsNum mines flagged opened i =
+    let
+        unFlaggedMinesNum =
+            countUnFlaggedMines rowsNum colsNum mines flagged i
+
+        indexes =
+            getIndexesAround rowsNum colsNum i
+    in
+    if unFlaggedMinesNum == 0 then
+        -- If should expand cell then filter out all already opened cells
+        List.filter (\j -> not (Set.member j opened)) indexes
+
+    else
+        []
 
 
 expandOpenedFromModel : Int -> Model -> Model
 expandOpenedFromModel i model =
     { model
         | opened =
-            expandOpened
+            expandOpenedFromClosed
                 model.rowsNum
                 model.colsNum
                 model.mines
@@ -180,6 +199,16 @@ update msg model =
               }
             , Cmd.none
             )
+
+        ExpandCell i ->
+            let
+                indexes =
+                    expandCell model.rowsNum model.colsNum model.mines model.flagged model.opened i
+
+                folder j m =
+                    update (OpenCell j) m |> Tuple.first
+            in
+            ( List.foldl folder model indexes, Cmd.none )
 
 
 subscriptions : Model -> Sub Msg
@@ -284,6 +313,21 @@ countMines rowsNum colsNum mines i =
         |> Set.size
 
 
+countUnFlaggedMines : Int -> Int -> Set Int -> Set Int -> Int -> Int
+countUnFlaggedMines rowsNum colsNum mines flagged i =
+    let
+        minesNum =
+            countMines rowsNum colsNum mines i
+
+        flaggedAroundNum =
+            getIndexesAround rowsNum colsNum i
+                |> Set.fromList
+                |> Set.intersect flagged
+                |> Set.size
+    in
+    minesNum - flaggedAroundNum
+
+
 getGrid : Int -> Int -> Set Int -> Set Int -> Set Int -> List Cell
 getGrid rowsNum colsNum opened flagged mines =
     -- let
@@ -325,6 +369,9 @@ mouseMsgFromEventId cellI mouseBtnId =
     case mouseBtnId of
         0 ->
             OpenCell cellI
+
+        1 ->
+            ExpandCell cellI
 
         2 ->
             FlagCell cellI
