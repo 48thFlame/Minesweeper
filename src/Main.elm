@@ -48,6 +48,7 @@ type alias Model =
     , mines : Set Int
     , totalMines : Int
     , flagged : Set Int
+    , questionFlagged : Set Int
     , opened : Set Int
     }
 
@@ -73,6 +74,7 @@ init flags =
       , mines = Set.empty
       , totalMines = 0
       , flagged = Set.empty
+      , questionFlagged = Set.empty
       , opened = Set.empty
       }
     , Cmd.none
@@ -86,13 +88,15 @@ type Msg
     | ExpandCell Int
 
 
+{-|
+expand a cell that is 0 all around and continue doing so until can't,
+doesn't need questionFlagged because doesn't use `flagged` to count mines instead just to not open it-}
 expandOpenedFromClosed : Int -> Int -> Set Int -> Set Int -> Int -> Set Int -> Set Int
 expandOpenedFromClosed rowsNum colsNum mines flagged i opened =
     let
         numberOfMines =
             countMines rowsNum colsNum mines i
 
-        -- countUnFlaggedMines rowsNum colsNum mines flagged i
         newOpened =
             Set.insert i opened
 
@@ -110,8 +114,8 @@ expandOpenedFromClosed rowsNum colsNum mines flagged i opened =
         List.foldl (expandOpenedFromClosed rowsNum colsNum mines flagged) newOpened indexes
 
 
-expandCell : Int -> Int -> Set Int -> Set Int -> Set Int -> Int -> List Int
-expandCell rowsNum colsNum mines flagged opened i =
+expandCell : Int -> Int -> Set Int -> Set Int -> Set Int -> Set Int -> Int -> List Int
+expandCell rowsNum colsNum mines flagged questionFlagged opened i =
     let
         unFlaggedMinesNum =
             countUnFlaggedMines rowsNum colsNum mines flagged i
@@ -121,7 +125,7 @@ expandCell rowsNum colsNum mines flagged opened i =
     in
     if unFlaggedMinesNum == 0 then
         -- If should expand cell then filter out all already opened cells
-        List.filter (\j -> not (Set.member j opened)) indexes
+        List.filter (\j -> not (Set.member j (Set.union opened questionFlagged))) indexes
 
     else
         []
@@ -135,7 +139,7 @@ expandOpenedFromModel i model =
                 model.rowsNum
                 model.colsNum
                 model.mines
-                model.flagged
+                (Set.union model.flagged model.questionFlagged)
                 i
                 model.opened
     }
@@ -170,7 +174,7 @@ update msg model =
             in
             if not (Set.isEmpty model.mines) then
                 -- If game started because mines exist
-                ( if Set.member i model.flagged then
+                ( if Set.member i (Set.union model.flagged model.questionFlagged) then
                     -- If cell is flagged, can't open it
                     model
 
@@ -186,16 +190,27 @@ update msg model =
                 )
 
         FlagCell i ->
-            ( { model
-                | flagged =
-                    if Set.member i model.flagged then
-                        Set.remove i model.flagged
+            let
+                inSet : Set Int -> Bool
+                inSet s =
+                    Set.member i s
 
-                    else if not (Set.member i model.opened) then
-                        Set.insert i model.flagged
+                flags =
+                    if inSet model.opened then
+                        ( model.flagged, model.questionFlagged )
+
+                    else if inSet model.flagged then
+                        ( Set.remove i model.flagged, Set.insert i model.questionFlagged )
+
+                    else if inSet model.questionFlagged then
+                        ( model.flagged, Set.remove i model.questionFlagged )
 
                     else
-                        model.flagged
+                        ( Set.insert i model.flagged, model.questionFlagged )
+            in
+            ( { model
+                | flagged = Tuple.first flags
+                , questionFlagged = Tuple.second flags
               }
             , Cmd.none
             )
@@ -203,7 +218,14 @@ update msg model =
         ExpandCell i ->
             let
                 indexes =
-                    expandCell model.rowsNum model.colsNum model.mines model.flagged model.opened i
+                    expandCell
+                        model.rowsNum
+                        model.colsNum
+                        model.mines
+                        model.flagged
+                        model.questionFlagged
+                        model.opened
+                        i
 
                 folder j m =
                     update (OpenCell j) m |> Tuple.first
@@ -217,27 +239,32 @@ subscriptions _ =
 
 
 type Cell
-    = Closed
-    | Number Int
-    | Flag
-    | Mine
+    = ClosedCell
+    | NumberCell Int
+    | MineFlagCell
+    | QuestionFlagCell
+    | MineCell
 
 
 cellToHtml : Cell -> Html Msg
 cellToHtml cell =
     case cell of
-        Closed ->
+        ClosedCell ->
             div [ class "closed-cell" ] []
 
-        Number num ->
+        NumberCell num ->
             div [ class "number-cell" ]
                 [ String.fromInt num |> text ]
 
-        Flag ->
+        MineFlagCell ->
             div [ class "flag-cell" ]
                 [ img [ src "assets/flag.svg", class "cell-img" ] [] ]
 
-        Mine ->
+        QuestionFlagCell ->
+            div [ class "flag-cell" ]
+                [ img [ src "assets/question flag.svg", class "cell-img" ] [] ]
+
+        MineCell ->
             div [ class "mine-cell" ]
                 [ img [ src "assets/mine.svg", class "cell-img" ] [] ]
 
@@ -328,8 +355,8 @@ countUnFlaggedMines rowsNum colsNum mines flagged i =
     minesNum - flaggedAroundNum
 
 
-getGrid : Int -> Int -> Set Int -> Set Int -> Set Int -> List Cell
-getGrid rowsNum colsNum opened flagged mines =
+getGrid : Int -> Int -> Set Int -> Set Int -> Set Int -> Set Int -> List Cell
+getGrid rowsNum colsNum mines flagged questionFlagged opened =
     -- let
     --     replaceItemIfInSet set newItem i currentItem =
     --         if Set.member i set then
@@ -343,17 +370,20 @@ getGrid rowsNum colsNum opened flagged mines =
         getCellAtIndex : Int -> Cell
         getCellAtIndex i =
             if Set.member i flagged then
-                Flag
+                MineFlagCell
+
+            else if Set.member i questionFlagged then
+                QuestionFlagCell
 
             else if Set.member i opened then
                 if Set.member i mines then
-                    Mine
+                    MineCell
 
                 else
-                    Number (countMines rowsNum colsNum mines i)
+                    NumberCell (countMines rowsNum colsNum mines i)
 
             else
-                Closed
+                ClosedCell
     in
     List.range 0 (rowsNum * colsNum - 1)
         |> List.map getCellAtIndex
@@ -430,7 +460,14 @@ view model =
         , gridToHtml
             model.rowsNum
             model.colsNum
-            (getGrid model.rowsNum model.colsNum model.opened model.flagged model.mines)
+            (getGrid
+                model.rowsNum
+                model.colsNum
+                model.mines
+                model.flagged
+                model.questionFlagged
+                model.opened
+            )
         , Html.p
             [ class "mine-count" ]
             [ text
