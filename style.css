@@ -1,6 +1,19 @@
-:root {
-    /* TODO: make normal */
-    --content-width: 750px;
+@media (min-width: 100vw) {
+
+    /* when width bigger */
+    .bottom-control-div,
+    .grid_area {
+        width: 75vh;
+    }
+}
+
+@media (max-width: 100vh) {
+
+    /* when height bigger */
+    .bottom-control-div,
+    .grid_area {
+        width: 75vw;
+    }
 }
 
 body {
@@ -23,7 +36,6 @@ body {
     display: flex;
     flex-direction: column;
 
-    /* justify-content: center; */
     align-items: center;
 }
 
@@ -31,10 +43,7 @@ body {
     margin: 15px;
 }
 
-
 .grid_area {
-    width: var(--content-width);
-
     color: rgb(20, 20, 20);
 
     display: grid;
@@ -42,7 +51,6 @@ body {
 
     user-select: none;
 }
-
 
 .cell:hover {
     opacity: 0.8;
@@ -84,14 +92,13 @@ body {
     justify-content: center;
 }
 
-
 .cell-img {
     aspect-ratio: 1/1;
     width: 75%;
 }
 
 .bottom-control-div {
-    width: var(--content-width);
+    /* width: var(--content-width); */
     display: flex;
 
     justify-content: space-around;

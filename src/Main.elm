@@ -23,6 +23,7 @@
 module Main exposing (main)
 
 import Browser
+import Browser.Events exposing (onKeyDown)
 import Html exposing (Html, div, img, text)
 import Html.Attributes exposing (class, src, style)
 import Html.Events exposing (on, onClick)
@@ -49,7 +50,8 @@ type GameResult
 
 
 type alias Model =
-    { gameResult : GameResult
+    { cheats : Bool
+    , gameResult : GameResult
     , rowsNum : Int
     , colsNum : Int
     , mines : Set Int
@@ -75,7 +77,8 @@ init flags =
         colsNum =
             Tuple.second flags
     in
-    ( { gameResult = Playing
+    ( { cheats = False
+      , gameResult = Playing
       , rowsNum = rowsNum
       , colsNum = colsNum
       , mines = Set.empty
@@ -93,6 +96,7 @@ type Msg
     | FlagCell Int
     | ExpandCell Int
     | NewGame
+    | ToggleCheats Bool
 
 
 {-| expand a cell that is 0 all around and continue doing so until can't,
@@ -194,6 +198,22 @@ generateMines rowsNum colsNum i =
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
+        ToggleCheats isShift ->
+            ( if isShift then
+                { model
+                    | cheats =
+                        if model.cheats then
+                            False
+
+                        else
+                            True
+                }
+
+              else
+                model
+            , Cmd.none
+            )
+
         NewGame ->
             init ( model.rowsNum, model.colsNum )
 
@@ -203,7 +223,7 @@ update msg model =
                     -- remove cause need to not lost on first turn
                     Set.remove i mines
             in
-            ( { model | mines = newMines |> Debug.log "mines" }
+            ( { model | mines = newMines }
                 |> expandOpenedFromModel i
             , Cmd.none
             )
@@ -273,7 +293,7 @@ update msg model =
 
 subscriptions : Model -> Sub Msg
 subscriptions _ =
-    Sub.none
+    onKeyDown (Decode.map ToggleCheats (Decode.at [ "shiftKey" ] Decode.bool))
 
 
 type Cell
@@ -292,7 +312,14 @@ cellToHtml cell =
 
         NumberCell num ->
             div [ class "number-cell" ]
-                [ String.fromInt num |> text ]
+                [ (if num == 0 then
+                    ""
+
+                   else
+                    String.fromInt num
+                  )
+                    |> text
+                ]
 
         MineFlagCell ->
             div [ class "flag-cell" ]
@@ -393,8 +420,8 @@ countUnFlaggedMines rowsNum colsNum mines flagged i =
     minesNum - flaggedAroundNum
 
 
-getGrid : Int -> Int -> Set Int -> Set Int -> Set Int -> Set Int -> List Cell
-getGrid rowsNum colsNum mines flagged questionFlagged opened =
+getGrid : Bool -> Int -> Int -> Set Int -> Set Int -> Set Int -> Set Int -> List Cell
+getGrid cheats rowsNum colsNum mines flagged questionFlagged opened =
     -- let
     --     replaceItemIfInSet set newItem i currentItem =
     --         if Set.member i set then
@@ -412,6 +439,9 @@ getGrid rowsNum colsNum mines flagged questionFlagged opened =
 
             else if Set.member i questionFlagged then
                 QuestionFlagCell
+
+            else if cheats && Set.member i mines then
+                MineCell
 
             else if Set.member i opened then
                 if Set.member i mines then
@@ -510,6 +540,7 @@ view model =
             model.rowsNum
             model.colsNum
             (getGrid
+                model.cheats
                 model.rowsNum
                 model.colsNum
                 model.mines
