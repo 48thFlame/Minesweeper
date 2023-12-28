@@ -1,9 +1,16 @@
+:root {
+    /* TODO: make normal */
+    --content-width: 750px;
+}
+
 body {
     margin: 0;
     padding: 0;
 
     width: 100vw;
     height: 100vh;
+
+    background-color: rgb(40, 40, 40);
 }
 
 .main {
@@ -18,20 +25,15 @@ body {
 
     /* justify-content: center; */
     align-items: center;
-    background-color: rgb(40, 40, 40);
 }
 
 .title {
     margin: 15px;
 }
 
-.mine-count {
-    margin: 10px;
-    font-size: larger;
-}
 
 .grid_area {
-    width: 750px;
+    width: var(--content-width);
 
     color: rgb(20, 20, 20);
 
@@ -86,4 +88,35 @@ body {
 .cell-img {
     aspect-ratio: 1/1;
     width: 75%;
+}
+
+.bottom-control-div {
+    width: var(--content-width);
+    display: flex;
+
+    justify-content: space-around;
+}
+
+.mine-count {
+    margin: 10px;
+    font-size: larger;
+    /* flex-grow: 1; */
+
+}
+
+.play-again-button {
+    flex-grow: 0.5;
+
+    padding: 0;
+    margin: 8px;
+
+    background-color: #416139;
+    color: rgb(200, 200, 200);
+    font-weight: bold;
+    border-radius: 4px;
+}
+
+.game-result-text {
+    margin: 10px;
+    margin-top: 0px;
 }

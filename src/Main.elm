@@ -25,7 +25,7 @@ module Main exposing (main)
 import Browser
 import Html exposing (Html, div, img, text)
 import Html.Attributes exposing (class, src, style)
-import Html.Events exposing (on)
+import Html.Events exposing (on, onClick)
 import Json.Decode as Decode exposing (Decoder)
 import Random
 import Random.Set
@@ -42,11 +42,17 @@ main =
         }
 
 
+type GameResult
+    = Playing
+    | Won
+    | Lost
+
+
 type alias Model =
-    { rowsNum : Int
+    { gameResult : GameResult
+    , rowsNum : Int
     , colsNum : Int
     , mines : Set Int
-    , totalMines : Int
     , flagged : Set Int
     , questionFlagged : Set Int
     , opened : Set Int
@@ -69,10 +75,10 @@ init flags =
         colsNum =
             Tuple.second flags
     in
-    ( { rowsNum = rowsNum
+    ( { gameResult = Playing
+      , rowsNum = rowsNum
       , colsNum = colsNum
       , mines = Set.empty
-      , totalMines = 0
       , flagged = Set.empty
       , questionFlagged = Set.empty
       , opened = Set.empty
@@ -86,11 +92,12 @@ type Msg
     | OpenCell Int
     | FlagCell Int
     | ExpandCell Int
+    | NewGame
 
 
-{-|
-expand a cell that is 0 all around and continue doing so until can't,
-doesn't need questionFlagged because doesn't use `flagged` to count mines instead just to not open it-}
+{-| expand a cell that is 0 all around and continue doing so until can't,
+doesn't need questionFlagged because doesn't use `flagged` to count mines instead just to not open it
+-}
 expandOpenedFromClosed : Int -> Int -> Set Int -> Set Int -> Int -> Set Int -> Set Int
 expandOpenedFromClosed rowsNum colsNum mines flagged i opened =
     let
@@ -145,33 +152,63 @@ expandOpenedFromModel i model =
     }
 
 
+getGameResult : Model -> GameResult
+getGameResult model =
+    let
+        minesThatOpened =
+            Set.intersect model.mines model.opened
+
+        flaggedWithOpened =
+            Set.union model.flagged model.opened
+
+        flaggedAllAndOnlyMines =
+            Set.diff model.flagged model.mines
+                |> Set.union (Set.diff model.mines model.flagged)
+                |> Set.isEmpty
+    in
+    if Set.size minesThatOpened /= 0 then
+        Lost
+
+    else if Set.size flaggedWithOpened >= (model.rowsNum * model.colsNum) && flaggedAllAndOnlyMines then
+        Won
+
+    else
+        Playing
+
+
+generateMines : Int -> Int -> Int -> Cmd Msg
+generateMines rowsNum colsNum i =
+    let
+        gridSize : Int
+        gridSize =
+            rowsNum * colsNum
+
+        numberOfMines : Int
+        numberOfMines =
+            round (percentMines * toFloat gridSize)
+    in
+    Random.Set.set numberOfMines (Random.int 0 (gridSize - 1))
+        |> Random.generate (StartGame i)
+
+
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
+        NewGame ->
+            init ( model.rowsNum, model.colsNum )
+
         StartGame i mines ->
             let
                 newMines =
                     -- remove cause need to not lost on first turn
                     Set.remove i mines
             in
-            ( { model
-                | mines = newMines
-                , totalMines = Set.size newMines
-              }
+            ( { model | mines = newMines |> Debug.log "mines" }
                 |> expandOpenedFromModel i
             , Cmd.none
             )
 
         OpenCell i ->
-            let
-                gridSize : Int
-                gridSize =
-                    model.rowsNum * model.colsNum
-
-                numberOfMines : Int
-                numberOfMines =
-                    round (percentMines * toFloat gridSize)
-            in
             if not (Set.isEmpty model.mines) then
                 -- If game started because mines exist
                 ( if Set.member i (Set.union model.flagged model.questionFlagged) then
@@ -180,13 +217,13 @@ update msg model =
 
                   else
                     expandOpenedFromModel i model
+                        |> (\m -> { m | gameResult = getGameResult m })
                 , Cmd.none
                 )
 
             else
                 ( model
-                , Random.Set.set numberOfMines (Random.int 0 gridSize)
-                    |> Random.generate (StartGame i)
+                , generateMines model.rowsNum model.colsNum i
                 )
 
         FlagCell i ->
@@ -212,6 +249,7 @@ update msg model =
                 | flagged = Tuple.first flags
                 , questionFlagged = Tuple.second flags
               }
+                |> (\m -> { m | gameResult = getGameResult m })
             , Cmd.none
             )
 
@@ -457,6 +495,17 @@ view : Model -> Html Msg
 view model =
     div [ class "main" ]
         [ Html.h1 [ class "title" ] [ text "Minesweeper!" ]
+        , div [ class "game-result" ]
+            (case model.gameResult of
+                Playing ->
+                    []
+
+                Won ->
+                    [ Html.h2 [ class "game-result-text" ] [ text "You Won!!" ] ]
+
+                Lost ->
+                    [ Html.h2 [ class "game-result-text" ] [ text "You Lost :(" ] ]
+            )
         , gridToHtml
             model.rowsNum
             model.colsNum
@@ -468,13 +517,20 @@ view model =
                 model.questionFlagged
                 model.opened
             )
-        , Html.p
-            [ class "mine-count" ]
-            [ text
-                ("Mines left: "
-                    ++ String.fromInt (Set.size model.flagged)
-                    ++ "/"
-                    ++ String.fromInt model.totalMines
-                )
+        , div [ class "bottom-control-div" ]
+            [ Html.p
+                [ class "mine-count" ]
+                [ text
+                    ("Mines left: "
+                        ++ String.fromInt (Set.size model.flagged)
+                        ++ "/"
+                        ++ String.fromInt (Set.size model.mines)
+                    )
+                ]
+            , Html.button
+                [ class "play-again-button"
+                , onClick NewGame
+                ]
+                [ text "Play Again" ]
             ]
         ]
