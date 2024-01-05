@@ -29,7 +29,7 @@ import Html.Attributes exposing (class, src, style)
 import Html.Events exposing (on, onClick)
 import Json.Decode as Decode exposing (Decoder)
 import Random
-import Random.Set
+import Random.List
 import Set exposing (Set)
 
 
@@ -91,7 +91,7 @@ init flags =
 
 
 type Msg
-    = StartGame Int (Set Int)
+    = StartGame Int (List Int)
     | OpenCell Int
     | FlagCell Int
     | ExpandCell Int
@@ -186,12 +186,10 @@ generateMines rowsNum colsNum i =
         gridSize : Int
         gridSize =
             rowsNum * colsNum
-
-        numberOfMines : Int
-        numberOfMines =
-            round (percentMines * toFloat gridSize)
     in
-    Random.Set.set numberOfMines (Random.int 0 (gridSize - 1))
+    List.range 0 (gridSize - 1)
+        |> List.filter (\j -> j /= i)
+        |> Random.List.shuffle
         |> Random.generate (StartGame i)
 
 
@@ -218,10 +216,21 @@ update msg model =
             init ( model.rowsNum, model.colsNum )
 
         StartGame i mines ->
+            {-
+               So generated a random list of mine locations that are not `i`,
+               now take only the amount needed and open `i`.
+            -}
             let
+                gridSize : Int
+                gridSize =
+                    model.rowsNum * model.colsNum
+
+                numberOfMines : Int
+                numberOfMines =
+                    round (percentMines * toFloat gridSize)
+
                 newMines =
-                    -- remove cause need to not lost on first turn
-                    Set.remove i mines
+                    List.take numberOfMines mines |> Set.fromList
             in
             ( { model | mines = newMines }
                 |> expandOpenedFromModel i
